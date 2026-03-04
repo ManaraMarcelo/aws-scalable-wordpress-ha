@@ -1,221 +1,157 @@
 <p align="center">
-  <img src="https://github.com/ManaraMarcelo/Sistema_Escalonavel_AWS-WordPress/blob/main/IMAGES/logo_wordpress_aws.png" width="600">
+  <img src="https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/logo_wordpress_aws.png" width="600">
 </p>
 
-<h1 align="center">Sistema Escalonável AWS com WordPress</h1>
+<h1 align="center">AWS Scalable Web Infrastructure: High-Availability WordPress Deployment</h1>
 
 <p align="center">
-  Deploy automatizado com escalabilidade, persistência de dados, segurança e balanceamento de carga usando AWS, Docker, WordPress e MySQL.
+  Automated deployment with high scalability, data persistence, security, and load balancing using AWS, Docker, WordPress, and MySQL.
 </p>
 
 <br>
 
 <div align="center">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=aws,docker,linux,wordpress,mysql" alt="Tecnologias" />
+    <img src="https://skillicons.dev/icons?i=aws,docker,linux,wordpress,mysql" alt="Technologies" />
   </a>
 </div>
 
 ---
 
-Este projeto tem como objetivo criar uma infraestrutura escalável e altamente disponível na AWS para hospedar uma aplicação WordPress com persistência de dados e automação completa, utilizando EC2, Load Balancer, EFS, RDS e Auto Scaling.
+### 💡 Project Overview
 
-## ✅ Funcionalidades
+**The Problem:** Traditional web hosting often fails under variable traffic loads and lacks data persistence when instances are terminated. Manually managing servers, databases, and file synchronization is inefficient and prone to downtime.
 
-- **Ambiente escalável com Auto Scaling Group**
-- **Persistência de arquivos com Amazon EFS**
-- **Banco de dados gerenciado com Amazon RDS (MySQL)**
-- **Balanceamento de carga com Elastic Load Balancer**
-- **Deploy automatizado via script de inicialização (User Data)**
-- **Segurança com Security Groups bem definidos**
+**The Solution:** A fully decoupled and elastic architecture on AWS. By separating the application layer (EC2), the database (RDS), and the file system (EFS), we ensure that the WordPress site can scale horizontally via Auto Scaling while maintaining a single, consistent state across all nodes.
 
+---
 
-## 📁 Estrutura de Serviços Utilizados
+## 📌 Table of Contents
+1. [Features](#-features)
+2. [Service Infrastructure](#-service-infrastructure)
+3. [Configuration Steps](#-configuration-steps)
+    * [1. VPC Creation](#1-vpc-creation)
+    * [2. Security Group Configuration](#2-security-group-configuration)
+    * [3. File System (EFS) Setup](#3-file-system-efs-setup)
+    * [4. Managed Database (RDS) Setup](#4-managed-database-rds-setup)
+    * [5. Base EC2 & User Data Testing](#5-base-ec2--user-data-testing)
+    * [6. Launch Template](#6-launch-template)
+    * [7. Target Group](#7-target-group)
+    * [8. Application Load Balancer](#8-application-load-balancer)
+    * [9. Auto Scaling Group](#9-auto-scaling-group)
+4. [Final Results](#-final-results)
+5. [Docker & User Data](#-docker--user-data)
+6. [Security Considerations](#-security-considerations)
+7. [Contact](#-contact)
 
-- **VPC personalizada**
-  - 2 Subnets públicas (EC2 + Load Balancer)
-  - 2 Subnets privadas (EFS + RDS)
+---
+
+## ✅ Features
+
+- **Elastic Environment:** Horizontal scaling with Auto Scaling Group.
+- **File Persistence:** Shared persistent storage using **Amazon EFS**.
+- **Managed Database:** High-performance persistence with **Amazon RDS (MySQL)**.
+- **Traffic Distribution:** Seamless load balancing via **Elastic Load Balancer (ALB)**.
+- **Zero-Touch Deployment:** Automated setup via **User Data** initialization scripts.
+- **Granular Security:** Orchestrated Security Groups following the principle of least privilege.
+
+## 📁 Service Infrastructure
+
+- **Custom VPC**
+  - 2 Public Subnets (EC2 + Load Balancer)
+  - 2 Private Subnets (EFS + RDS)
 - **Amazon EC2**
-  - Docker Compose com WordPress
-  - Instância base para Auto Scaling (Launch Template)
+  - Docker Compose running WordPress.
+  - Launch Template for automated scaling.
 - **Amazon RDS (MySQL)**
-  - Banco de dados do WordPress
+  - Managed database for WordPress core data.
 - **Amazon EFS**
-  - Armazenamento de arquivos persistente e compartilhado
-- **Elastic Load Balancer**
-  - Acesso externo ao site WordPress
+  - Shared persistent storage for `/wp-content`.
+- **Elastic Load Balancer (ALB)**
+  - Single entry point for external web traffic.
 - **Auto Scaling Group**
-  - 2 instâncias (padrão, podendo variar de 1 a 3) com verificação de saúde e alta disponibilidade
+  - Dynamic fleet management (Min: 1, Desired: 2, Max: 3).
 
-## ⚙️ Passos de Configuração
+## ⚙️ Configuration Steps
 
-### 1. Criar a VPC
-![vpcroutes](/IMAGES/vpc01.png)
+### 1. VPC Creation
+![vpcroutes](https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/vpc01.png)
 
-- Subnets públicas para as EC2 e Load Balancer
-- Subnets privadas para EFS e RDS
+- Configured public subnets for instances and Load Balancer.
+- Configured private subnets for EFS and RDS.
 
-### 2. Configurar Security Groups
-- SG do ALB (Load Balancer):
-    - inbound rules:  
-    all trafic -> 0.0.0.0/0   
-    all trafic -> ::/0
-    - outbound rules:   
-    deixar vazio
-      
-- SG da EC2:
-    - inbound rules:   
-    SSH -> TCP -> 22 -> My IP [para configuração e conexão como dev]   
-    HTTP -> TCP -> 80 -> SG-ALB [entrada do Load Balancer]   
-    NFS -> TCP -> 2049 -> SG-EFS [entrada do Elástic File System]     
-    - outbound rules:    
-    ALL trafic -> 0.0.0.0/0
+### 2. Security Group Configuration
+- **ALB SG:**
+    - Inbound: All traffic -> 0.0.0.0/0
+- **EC2 SG:**
+    - Inbound SSH (22) -> Developer IP only.
+    - Inbound HTTP (80) -> Restricted to **ALB SG**.
+    - Inbound NFS (2049) -> Restricted to **EFS SG**.
+- **RDS SG:**
+    - Inbound MySQL (3306) -> Restricted to **EC2 SG** only.
+- **EFS SG:**
+    - Inbound NFS (2049) -> Restricted to **EC2 SG**.
 
-- SG do RDS:
-    - inbound rules:   
-    MYSQL/Aurora -> TCP -> 3306 -> SG-EC2 [entrada da ec2 apenas]
-    - outbound rules:    
-    ALL trafic -> 0.0.0.0/0
+### 3. File System (EFS) Setup
+- Named and initialized within the custom VPC.
+![efsName](https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/efsName.png)
+- Mount targets configured for private subnets using the **EFS SG**.
+![efssubnets](https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/efs02.png)
 
-- SG do EFS:
-    - inbound rules:   
-    NFS -> TCP -> 2049 -> SG-EC2
-    - outbound rules:    
-    ALL trafic -> 0.0.0.0/0
+### 4. Managed Database (RDS) Setup
+- **Engine:** MySQL (Free Tier template).
+- **Connectivity:** Deployed in private subnets with access restricted to the EC2 security group.
+![t3microDatabase](https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/databaset3micro.png)
+![vpcdatabase](https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/databasevpc.png)
+![databaseSG](https://github.com/ManaraMarcelo/aws-scalable-wordpress-ha/blob/main/IMAGES/databaseSG.png)
 
-### 3. Criar o File System (EFS)
+### 5. Base EC2 & User Data Testing
+The instances are provisioned using a script that:
+1. Installs Docker/Containerd.
+2. Mounts the EFS volume.
+3. Launches the WordPress container with RDS environment variables.
+4. Creates a non-root 'devuser' for security.
+🔗 **Script Link:** [`userData.sh`](./userData.sh)
 
-- Insira um nome para o seu EFS: 
-![efsName](/IMAGES/efsName.png)
+### 6. Launch Template
+- Defines the AMI (Ubuntu), Key Pair, and the automated User Data script to be used by the Auto Scaling Group.
 
-- Selecione sua VPC e certifique-se de que estão selecionadas as subnets privadas e o SG-EFS nos security groups: 
-![efssubnets](/IMAGES/efs02.png)
-
-- Customize as demais como desejar, para esse projeto nada mais foi alterado.
-
-- O EFS será montado em todas as EC2 via User_Data posteriormente.
-
-### 4. Criar o banco de dados RDS (MySQL)
-- Em Choose a database creation method:  
-  - Selecionamos Standard create.
-- Em Engine options:   
-  - Selecionamos o MySQL
-- Em Templates:    
-  - Selecionamos Free Tier
-- Configuramos um ID para o banco de dados
-- Criamos nossas credenciais (Master username e Senha)
-
-- Outros: 
-![t3microDatabase](/IMAGES/databaset3micro.png)
-
-- Selecionamos nossa vpc:  
-![vpcdatabase](/IMAGES/databasevpc.png)
-
-- Selecionamos nosso SG-RDS:
-![databaseSG](/IMAGES/databaseSG.png)
-
-- Deixe o database com autenticação por senha
-- Monitoramento como Standart
-- O restante deixe como padrão e adicione a seguinte configuração: 
-![databaseName](/IMAGES/databaseName.png)
-que é o nome usado em seu `user_Data`.
-
-### 5. Criar a Instância EC2 base - Para testes
-- Utilizar AMI Ubuntu
-- Adicionar script no **User Data** para:
-  - Instalar Docker ou containerd
-  - Montar EFS
-  - Rodar container do WordPress com variáveis de ambiente do RDS
-  - Criar usuário para não usar o ubuntu com permissão root
-- User data utilizado: [`userData.sh`](./userData.sh)
-- Conecte-se via SSH e verifique se o Docker está funcionando e se nosso projeto foi lançado.
-
-### 6. Criar Template de Lançamento (Launch Template)
-- Baseado na instância EC2 configurada
-- Deve conter:
-  - AMI ubuntu
-  - Par de chaves (opcional caso precise conectar via SSH)
-  - Security Group da EC2 (SG-EC2)
-  - Não selecionar subnets (Será selecionado no Auto Sacaling)
-  - Deixar IP público das instâncias ativado
-  - Script de **User Data**
-
-### 7. Criar o Target Group
-
-- Seleciono as seguintes opções:
-![target1](IMAGES/targetgroup01.png)
-![target2](IMAGES/targetgroup012.png)
-![target3](IMAGES/targetgroup03.png)
-    - em Health Check colocamos o seguinte caminho:
-
-```sh
+### 7. Target Group
+- Configured with a specific Health Check path to ensure application availability:
+```text
 /wp-admin/images/wordpress-logo.svg
+
 ```
 
-### 8. Criar o Load Balancer Application
-- Tipo: Application Load Balancer
-- Subnets: públicas
-- Listeners:
-  - HTTP na porta 80 direcionando para a porta 80 da instância
-- Health Check:
-  - Caminho: `Targuet Group`
+### 8. Application Load Balancer
 
-  ![loadbalancer](/IMAGES/loadbalancer03.png)
+* Acts as the entry point, distributing traffic across public subnets to the healthy instances in the Target Group.
 
-  - Porta: 80
-  - Tempo entre verificações: 30s
-  - Thresholds padrão (pode ser ajustado)
+### 9. Auto Scaling Group
 
-### 9. Criar Auto Scaling Group
-- Baseado no Launch Template criado anteriormente   
+* Dynamic fleet management integrated with the Load Balancer.
+* **Desired Capacity:** 2 instances.
 
-    - Dê nome e escolha o template
-![inicioAutoScaling](IMAGES/autoscaling01.png)
+## 💪 Final Results
 
-- Em Network: 
+The project is fully autonomous. Traffic is routed through the **Load Balancer DNS**, ensuring access even if individual instances are terminated or replaced.
 
-    - Escolhemos nossa VPC padrão e nossas subnets publicas 
-    ![network autoscaling](IMAGES/autoscaling02.png)   
-
-- Também: 
-
-    - Selecione nosso Load Balancer que estará conectado ao Target Group
-    ![loadbalancer](IMAGES/autoscaling03.png)
-
-- Configurações:
-  - Mínimo: 1 instância
-  - Desejado: 2 instâncias
-  - Máximo: 3 instâncias
-  - Health Check ativado (EC2 + Load Balancer)
-    - Para verificar o Health Check usaremos o seguinte ping: /wp-admin/images/wordpress-logo.svg
-  - Arquilo que não foi configurado, deixe como padrão
-
-## 💪 Finalizado
-
-**Após todo esse processo seu projeto deve funcionar sozinho, direcionando através do Load Balancer para as Instâncias criadas automaticamente pelo Auto Scaling.**
-
-**Para acessar o seu WordPress acesse o link de DNS gerado pelo Load Balancer, pois essa é nossa rota de entrada.**
-
-**Para fins de testes, tente adicionar uma imagem dentro de seu wordpress por uma instância, derrube ela e veja através de outra se sua imagem ainda está por lá. Se sim, o EFS está funcionando perfeitamente.**
-
-**Seu WordPress já está funcionando perfeitamente, você pode configurar e customizar como quiser que os dados serão persistidos pelo RDS e pelo EFS.**
-
+**Persistence Test:** 1. Upload an image via WordPress. 2. Terminate the active instance. 3. Wait for Auto Scaling to provision a new node. 4. Verify the image is still available via the new instance. (Success = EFS & RDS working correctly).
 
 ## 🐳 Docker & User Data
 
-O script de User Data prepara automaticamente o ambiente com Docker Compose ou containerd, monta o EFS e inicia o WordPress:
+The User Data script automatically prepares the environment and mounts the network file system.
+🔗 **Link to `user_data.sh`:** [user_data.sh](https://www.google.com/search?q=./userData.sh)
 
-🔗 **Link para o script `user_data.sh`:** [user_data.sh](./userData.sh)
+## 🔐 Security Considerations
 
----
-
-## 🔐 Considerações de Segurança
-
-- Nenhuma instância EC2 fica com IP público exposto diretamente.
-- Acesso ao WordPress ocorre **somente via Load Balancer**.
-- Acesso por SSH restrito apenas ao IP do desenvolvedor.
-- É criado um 'devuser' dentro das EC2 para o uso do Docker, evitando o usuário padrão com permissões Root.
-- Separação de Security Groups por função (EC2, ALB, EFS, RDS).
-- Utilização de EFS permite compartilhamento de arquivos entre instâncias do Auto Scaling sem perda de dados.
+* **Isolation:** No EC2 instance has direct public exposure; traffic is filtered through the ALB.
+* **Least Privilege:** Security Groups act as virtual firewalls between layers (Web, DB, Storage).
+* **Non-Root Access:** Implementation of `devuser` for Docker operations.
+* **Data Integrity:** Shared EFS ensures no data loss during horizontal scaling.
 
 ---
+
+## 🔗 Contact
+
+**Marcelo Manara** [LinkedIn](https://www.linkedin.com/in/marcelo-manara) | [Portfolio](https://portifolio-peach-beta.vercel.app/)
